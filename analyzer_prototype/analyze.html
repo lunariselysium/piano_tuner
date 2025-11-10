@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inharmonic Piano Temperament Analyzer</title>
+    <!-- Include Chart.js from a CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1000px;
+            margin: 20px auto;
+            padding: 0 20px;
+            background-color: #f9f9f9;
+        }
+        h1, h2, h3 {
+            color: #1a1a1a;
+            border-bottom: 2px solid #005a9c;
+            padding-bottom: 5px;
+        }
+        .container {
+            background: #fff;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .input-section, .output-section {
+            margin-bottom: 30px;
+        }
+        textarea {
+            width: 98%;
+            height: 150px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        button, select {
+            background-color: #0078d4;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #005a9c;
+        }
+        #audio-controls button {
+            background-color: #2a2a2a;
+            margin: 5px;
+            width: 120px;
+        }
+        #audio-controls button:hover {
+            background-color: #4a4a4a;
+        }
+        .chart-container {
+            margin-top: 20px;
+        }
+        label {
+            font-weight: bold;
+            display: block;
+            margin-bottom: 5px;
+        }
+        .hidden {
+            display: none;
+        }
+        .instructions {
+            background-color: #eef7ff;
+            border-left: 5px solid #0078d4;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Inharmonic Piano Temperament Analyzer</h1>
+
+        <div class="instructions">
+            <h3>Instructions</h3>
+            <p>Paste your data in <strong>JSON format</strong>. Python's `print(dict)` is not valid JSON. Use `json.dumps(your_dict)` in Python to get the correct format.</p>
+            <p><strong>Example B-Values:</strong> <code>{"21": 0.00005, "22": 0.00006, ...}</code></p>
+            <p><strong>Example Tuning Frequencies:</strong> <code>{"21": 27.501, "22": 29.135, ...}</code></p>
+        </div>
+
+        <div class="input-section">
+            <h2>1. Input Data</h2>
+            <label for="bValuesInput">B-Values Dictionary (Inharmonicity Coefficients)</label>
+            <textarea id="bValuesInput" placeholder='Paste your JSON B-value dictionary here, e.g., {"60": 0.0001, "61": 0.00011, ...}'></textarea>
+
+            <label for="tuningInput" style="margin-top: 15px;">Final Tuning Dictionary (Frequencies in Hz)</label>
+            <textarea id="tuningInput" placeholder='Paste your JSON final tuning dictionary here, e.g., {"60": 261.63, "61": 277.19, ...}'></textarea>
+
+            <button onclick="generateAnalysis()" style="margin-top: 15px;">Generate Analysis</button>
+        </div>
+
+        <div id="output" class="output-section hidden">
+            <h2>2. Railsback Curve (Cents Deviation from 12-TET)</h2>
+            <p>This curve shows how much your tuning "stretches" compared to an ideal piano. A classic stretched tuning dips slightly in the bass and rises sharply in the treble.</p>
+            <div class="chart-container">
+                <canvas id="railsbackChart"></canvas>
+            </div>
+
+            <h2 style="margin-top: 30px;">3. Beat Rate Progression Analysis</h2>
+            <p>This chart compares the target beat rates of ideal 12-TET with the actual beat rates produced by your inharmonic tuning. A successful tuning will have the "Actual" line closely follow the "Target" line.</p>
+            <div>
+                <label for="intervalSelector">Select Interval:</label>
+                <select id="intervalSelector" onchange="updateBeatRateChart()">
+                    <option value="M3">Major Third</option>
+                    <option value="P5">Perfect Fifth</option>
+                    <option value="P4">Perfect Fourth</option>
+                    <option value="m3">Minor Third</option>
+                </select>
+            </div>
+            <div class="chart-container">
+                <canvas id="beatRateChart"></canvas>
+            </div>
+            
+            <h2 style="margin-top: 30px;">4. Aural Evaluation</h2>
+            <p>Click the buttons to hear notes and chords synthesized with their specified inharmonicity. This requires your browser to be un-muted. (Note: Sound synthesis is an approximation).</p>
+            <div id="audio-controls"></div>
+        </div>
+    </div>
+
+    <script>
+        // --- Global Variables ---
+        let audioContext;
+        let bValuesMap = new Map();
+        let finalTuningMap = new Map();
+        let railsbackChart, beatRateChart;
+
+        const MIDI_A4 = 69;
+        const FREQ_A4 = 440.0;
+
+        // --- Helper Functions ---
+        const getPartialFreq = (fundamental, n, B) => n * fundamental * Math.sqrt(1 + B * n * n);
+        const midiToHz12TET = (midi) => FREQ_A4 * Math.pow(2, (midi - MIDI_A4) / 12.0);
+
+        // --- Main Analysis Function ---
+        function generateAnalysis() {
+            try {
+                const bValuesRaw = JSON.parse(document.getElementById('bValuesInput').value);
+                const tuningRaw = JSON.parse(document.getElementById('tuningInput').value);
+
+                bValuesMap = new Map(Object.entries(bValuesRaw).map(([k, v]) => [parseInt(k), v]));
+                finalTuningMap = new Map(Object.entries(tuningRaw).map(([k, v]) => [parseInt(k), v]));
+                
+                document.getElementById('output').classList.remove('hidden');
+                
+                plotRailsbackCurve();
+                updateBeatRateChart(); // Initial plot
+                createAudioButtons();
+
+            } catch (error) {
+                alert("Error parsing JSON input. Please check your data format.\nDetails: " + error.message);
+            }
+        }
+
+        // --- Plotting Functions ---
+        function plotRailsbackCurve() {
+            const labels = Array.from(finalTuningMap.keys()).sort((a, b) => a - b);
+            const data = labels.map(midi => {
+                const actualFreq = finalTuningMap.get(midi);
+                const idealFreq = midiToHz12TET(midi);
+                const centsDeviation = 1200 * Math.log2(actualFreq / idealFreq);
+                return centsDeviation;
+            });
+
+            const ctx = document.getElementById('railsbackChart').getContext('2d');
+            if (railsbackChart) railsbackChart.destroy();
+            railsbackChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels.map(m => `MIDI ${m}`),
+                    datasets: [{
+                        label: 'Cents Deviation from 12-TET',
+                        data: data,
+                        borderColor: '#0078d4',
+                        backgroundColor: 'rgba(0, 120, 212, 0.1)',
+                        borderWidth: 2,
+                        pointRadius: 2,
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    scales: {
+                        x: { title: { display: true, text: 'MIDI Note' } },
+                        y: { title: { display: true, text: 'Cents' } }
+                    }
+                }
+            });
+        }
+
+        function updateBeatRateChart() {
+            const intervalType = document.getElementById('intervalSelector').value;
+            const intervalData = {
+                'M3': { semitones: 4, p1: 5, p2: 4 },
+                'm3': { semitones: 3, p1: 6, p2: 5 },
+                'P5': { semitones: 7, p1: 3, p2: 2 },
+                'P4': { semitones: 5, p1: 4, p2: 3 }
+            }[intervalType];
+
+            const labels = [];
+            const targetRates = [];
+            const actualRates = [];
+
+            // Analyze a central range, e.g., MIDI 48 (C3) to 84 (C6)
+            for (let midi1 = 48; midi1 < 84 - intervalData.semitones; midi1++) {
+                const midi2 = midi1 + intervalData.semitones;
+                if (finalTuningMap.has(midi1) && finalTuningMap.has(midi2)) {
+                    labels.push(`MIDI ${midi1}`);
+                    
+                    // Calculate Target (Ideal 12-TET) Beat Rate
+                    const f1_ideal = midiToHz12TET(midi1);
+                    const f2_ideal = midiToHz12TET(midi2);
+                    const targetRate = Math.abs(intervalData.p1 * f1_ideal - intervalData.p2 * f2_ideal);
+                    targetRates.push(targetRate);
+                    
+                    // Calculate Actual Inharmonic Beat Rate
+                    const f1_actual = finalTuningMap.get(midi1);
+                    const f2_actual = finalTuningMap.get(midi2);
+                    const b1 = bValuesMap.get(midi1) || 0;
+                    const b2 = bValuesMap.get(midi2) || 0;
+                    const p1_actual = getPartialFreq(f1_actual, intervalData.p1, b1);
+                    const p2_actual = getPartialFreq(f2_actual, intervalData.p2, b2);
+                    const actualRate = Math.abs(p1_actual - p2_actual);
+                    actualRates.push(actualRate);
+                }
+            }
+
+            const ctx = document.getElementById('beatRateChart').getContext('2d');
+            if (beatRateChart) beatRateChart.destroy();
+            beatRateChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Target Beat Rate (Ideal 12-TET)',
+                        data: targetRates,
+                        borderColor: '#cccccc',
+                        borderWidth: 4,
+                        pointRadius: 0
+                    }, {
+                        label: 'Actual Beat Rate (Your Tuning)',
+                        data: actualRates,
+                        borderColor: '#e81123',
+                        backgroundColor: 'rgba(232, 17, 35, 0.1)',
+                        borderWidth: 2,
+                        pointRadius: 2
+                    }]
+                },
+                options: {
+                    scales: {
+                        x: { title: { display: true, text: 'Base Note of Interval' } },
+                        y: { title: { display: true, text: 'Beat Rate (Hz)' } }
+                    }
+                }
+            });
+        }
+        
+        // --- Audio Functions ---
+        function initializeAudio() {
+            if (!audioContext) {
+                try {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                } catch (e) {
+                    alert('Web Audio API is not supported in this browser.');
+                }
+            }
+        }
+
+        function playNote(midi, duration = 1.5) {
+            if (!audioContext || !finalTuningMap.has(midi)) return;
+
+            const fundamental = finalTuningMap.get(midi);
+            const B = bValuesMap.get(midi) || 0;
+            const now = audioContext.currentTime;
+
+            const masterGain = audioContext.createGain();
+            masterGain.connect(audioContext.destination);
+            
+            // Simple ADSR envelope
+            masterGain.gain.setValueAtTime(0, now);
+            masterGain.gain.linearRampToValueAtTime(0.5, now + 0.01); // Attack
+            masterGain.gain.exponentialRampToValueAtTime(0.3, now + 0.3); // Decay
+            masterGain.gain.exponentialRampToValueAtTime(0.0001, now + duration); // Release
+
+            // Create oscillators for fundamental and partials
+            const numPartials = 8;
+            for (let n = 1; n <= numPartials; n++) {
+                const osc = audioContext.createOscillator();
+                const partialGain = audioContext.createGain();
+                
+                osc.type = 'sine';
+                osc.frequency.value = getPartialFreq(fundamental, n, B);
+                
+                // Partials decay in volume
+                partialGain.gain.value = 1.0 / (n * n); // Faster falloff for a softer tone
+                
+                osc.connect(partialGain).connect(masterGain);
+                osc.start(now);
+                osc.stop(now + duration);
+            }
+        }
+
+        function playChord(midis, duration = 2.0) {
+            midis.forEach(midi => playNote(midi, duration));
+        }
+
+        function createAudioButtons() {
+            initializeAudio();
+            const container = document.getElementById('audio-controls');
+            container.innerHTML = ''; // Clear previous buttons
+
+            const noteNames = { 60: 'C4', 62: 'D4', 64: 'E4', 65: 'F4', 67: 'G4', 69: 'A4', 71: 'B4', 72: 'C5'};
+            Object.entries(noteNames).forEach(([midi, name]) => {
+                const btn = document.createElement('button');
+                btn.textContent = `Play ${name}`;
+                btn.onclick = () => playNote(parseInt(midi));
+                container.appendChild(btn);
+            });
+            
+            container.appendChild(document.createElement('hr'));
+            
+            const chords = {
+                'C Major': [60, 64, 67],
+                'G Major': [67, 71, 74],
+                'F Major': [65, 69, 72]
+            };
+            Object.entries(chords).forEach(([name, midis]) => {
+                const btn = document.createElement('button');
+                btn.textContent = `Play ${name}`;
+                btn.onclick = () => playChord(midis);
+                container.appendChild(btn);
+            });
+        }
+    </script>
+
+</body>
+</html>

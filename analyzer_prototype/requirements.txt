@@ -1,0 +1,6 @@
+Flask
+Flask-SocketIO
+numpy
+sounddevice
+scipy
+matplotlib

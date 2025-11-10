@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Piano Tuner</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; flex-direction: column; align-items: center; background-color: #f0f2f5; margin: 0; padding: 20px; box-sizing: border-box; }
+        .container { display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 900px; }
+        h1 { color: #333; text-align: center; }
+        .controls, .tuner, .chart-box { width: 100%; background: #fff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); padding: 20px; margin-bottom: 20px; box-sizing: border-box; }
+        .controls { display: flex; justify-content: center; align-items: center; gap: 15px; }
+        #toggle-btn { padding: 10px 25px; border: none; background-color: #28a745; color: white; border-radius: 6px; font-size: 1.2rem; cursor: pointer; transition: background-color 0.2s; }
+        #toggle-btn.listening { background-color: #dc3545; }
+        .status { font-size: 1rem; color: #555; }
+        .tuner { text-align: center; }
+        .note-display { font-size: 5rem; font-weight: bold; color: #1a1a1a; margin: 10px 0; }
+        .freq-display { font-size: 1.5rem; color: #555; margin-bottom: 20px; }
+        .tuner-visualizer { position: relative; width: 100%; height: 50px; background-color: #e9e9e9; border-radius: 8px; overflow: hidden; border: 1px solid #ccc; }
+        .tuner-needle { position: absolute; top: 0; left: 50%; width: 3px; height: 100%; background-color: #333; transform: translateX(-50%); z-index: 2; }
+        .tuner-indicator { position: absolute; top: 0; left: 50%; width: 10px; height: 100%; background-color: red; transition: transform 0.2s ease-out; z-index: 1; }
+        .in-tune .tuner-indicator { background-color: #4CAF50; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Real-Time Piano Tuner</h1>
+
+        <div class="controls">
+            <button id="toggle-btn">Start Listening</button>
+            <div id="status" class="status">Click Start to enable microphone</div>
+        </div>
+
+        <div class="tuner">
+            <div id="note" class="note-display">...</div>
+            <div id="frequency" class="freq-display"></div>
+            <div class="tuner-visualizer" id="visualizer">
+                <div class="tuner-needle"></div>
+                <div class="tuner-indicator" id="indicator"></div>
+            </div>
+        </div>
+
+        <div class="chart-box"><canvas id="waveformChart"></canvas></div>
+        <div class="chart-box"><canvas id="fftChart"></canvas></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const socket = io();
+            Chart.register(window.ChartjsAnnotation);
+            // UI Elements
+            const noteEl = document.getElementById('note'), freqEl = document.getElementById('frequency');
+            const indicator = document.getElementById('indicator'), visualizer = document.getElementById('visualizer');
+            const toggleBtn = document.getElementById('toggle-btn'), statusEl = document.getElementById('status');
+
+            console.log("Toggle Button Element:", toggleBtn); // <-- Add this line
+            // Audio Processing Globals
+            let audioContext, stream, scriptProcessor;
+            let isListening = false;
+            const BUFFER_SIZE = 4096;
+
+            // --- Chart Setup --- (Identical to before)
+            const createChart = (ctx, type, label) => new Chart(ctx, { type: type, data: { labels: [], datasets: [{ label: label, data: [], borderColor: 'rgb(75, 192, 192)', tension: 0.1, borderWidth: 1.5, pointRadius: 0 }] }, options: { animation: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false } } } });
+            const waveformCtx = document.getElementById('waveformChart').getContext('2d');
+            const waveformChart = createChart(waveformCtx, 'line', 'Waveform');
+            waveformChart.options.scales.x = { ticks: { display: false }, title: { display: true, text: "Time" } };
+            waveformChart.options.scales.y = { min: -1, max: 1, title: { display: true, text: "Amplitude" } };
+            const fftCtx = document.getElementById('fftChart').getContext('2d');
+            const fftChart = createChart(fftCtx, 'line', 'Frequency Spectrum');
+            fftChart.options.scales.x = { type: 'logarithmic', min: 20, max: 5000, title: { display: true, text: 'Frequency (Hz)' } };
+            fftChart.options.scales.y = { title: { display: true, text: 'Magnitude' } };
+            fftChart.options.plugins.annotation = { annotations: {} };
+
+            // --- Audio Capture Logic ---
+            async function startListening() {
+                if (isListening) return;
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia({ video: false, audio: true })) {
+                    alert('Your browser does not support audio capture.');
+                    return;
+                }
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({ audio: {
+                        // These constraints help reduce processing load and improve quality
+                        noiseSuppression: false,
+                        echoCancellation: false,
+                        autoGainControl: false
+                    } });
+
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 44100 });
+                    const source = audioContext.createMediaStreamSource(stream);
+                    scriptProcessor = audioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
+
+                    scriptProcessor.onaudioprocess = (e) => {
+                        const audioData = e.inputBuffer.getChannelData(0);
+                        // Send the raw audio data to the Python backend
+                        socket.emit('process_audio', Array.from(audioData));
+                    };
+
+                    source.connect(scriptProcessor);
+                    scriptProcessor.connect(audioContext.destination);
+
+                    isListening = true;
+                    toggleBtn.textContent = 'Stop Listening';
+                    toggleBtn.classList.add('listening');
+                    statusEl.textContent = 'Listening...';
+
+                } catch (err) {
+                    console.error('Error accessing microphone:', err);
+                    statusEl.textContent = `Error: ${err.message}. Please allow microphone access.`;
+                }
+            }
+
+            function stopListening() {
+                if (!isListening) return;
+                
+                // Disconnect all nodes and stop the stream
+                if (stream) stream.getTracks().forEach(track => track.stop());
+                if (scriptProcessor) scriptProcessor.disconnect();
+                if (audioContext) audioContext.close();
+
+                isListening = false;
+                toggleBtn.textContent = 'Start Listening';
+                toggleBtn.classList.remove('listening');
+                statusEl.textContent = 'Click Start to enable microphone';
+            }
+
+            toggleBtn.addEventListener('click', () => {
+                console.log("hahahha ai is stupid");
+                if (isListening) {
+                    stopListening();
+                } else {
+                    startListening();
+                }
+            });
+
+            // --- Socket.IO Listener for receiving analysis results ---
+            socket.on('analysis_result', (data) => {
+                noteEl.textContent = data.note;
+                freqEl.textContent = data.frequency;
+                const cents = data.cents;
+                const clampedCents = Math.max(-50, Math.min(50, cents));
+                indicator.style.transform = `translateX(${(clampedCents / 50) * 50}%)`;
+                visualizer.classList.toggle('in-tune', Math.abs(cents) < 5);
+
+                if (data.waveform) {
+                    waveformChart.data.labels = Array.from({ length: data.waveform.length }, (_, i) => i);
+                    waveformChart.data.datasets[0].data = data.waveform;
+                    waveformChart.update('none');
+                }
+                if (data.fft_freqs) {
+                    fftChart.data.labels = data.fft_freqs;
+                    fftChart.data.datasets[0].data = data.fft_mags;
+                    const annotations = {};
+                    if (data.partials && data.partials.length > 0) {
+                        data.partials.forEach((p, i) => {
+                            annotations[`partial_${i}`] = {
+                                type: 'line', scaleID: 'x', value: p,
+                                borderColor: i === 0 ? 'rgba(255, 99, 132, 0.8)' : 'rgba(54, 162, 235, 0.5)',
+                                borderWidth: i === 0 ? 3 : 2,
+                                label: { content: i === 0 ? `F0` : `P${i+1}`, enabled: true, position: 'start', backgroundColor: i === 0 ? 'rgba(255, 99, 132, 0.8)' : 'rgba(54, 162, 235, 0.5)', font: { size: 10 } }
+                            };
+                        });
+                    }
+                    fftChart.options.plugins.annotation.annotations = annotations;
+                    fftChart.update('none');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
