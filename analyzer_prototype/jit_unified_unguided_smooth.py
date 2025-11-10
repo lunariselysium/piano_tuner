@@ -12,7 +12,7 @@ ALL_MIDI_NOTES = range(21, 109)
 # --- NEW: SMOOTHING PARAMETER ---
 # Controls the penalty for "jaggedness" in the tuning curve.
 # Higher values result in a smoother curve. Start with values between 1.0 and 100.0.
-SMOOTHNESS_WEIGHT = 15.0
+SMOOTHNESS_WEIGHT = 250.0
 
 # Apply Numba's JIT compiler for significant speedup in these pure numerical functions.
 # nopython=True ensures no Python interpreter overhead, and cache=True saves compilation time on subsequent runs.
@@ -113,9 +113,16 @@ intervals_to_check = intervals.generate_intervals_from_reference(
         'Octave', 'Double Octave', 'Perfect 5th', 'Perfect 4th',
         'Major 3rd', 'Minor 3rd', 'Major 10th', 'Major 12th', 'Major 17th'
     ],
-    custom_weights= {
-        'Octave': 3.0, 'Perfect 5th': 2.0, 'Perfect 4th': 2.0, 'Major 3rd': 1.0,
-        'Minor 3rd': 0.8, 'Major 10th': 0.6, 'Major 12th': 0.5, 'Major 17th': 0.1,
+    custom_weights={
+        'Octave': 100.0,          # Highest priority
+        'Double Octave': 90.0,
+        'Perfect 5th': 20.0,      # High priority, but clearly below octaves
+        'Perfect 4th': 20.0,
+        'Major 12th': 15.0,       # A fifth plus an octave
+        'Major 3rd': 5.0,
+        'Minor 3rd': 4.0,
+        'Major 10th': 3.0,
+        'Major 17th': 1.0,        # Lowest priority
     },
     reference_note_midi=MIDI_A4
 )
@@ -199,12 +206,12 @@ if result.success or result.lowest_optimization_result.success:
             cents_dev = 1200 * np.log2(freq / ideal_freq)
             print(f"MIDI {midi}: {freq:.4f} Hz (Deviation: {cents_dev:+.2f} cents)")
     
-        print("\n\n\n")
+    print("\n\n\n")
     print("--- B_dict (JSON) ---")
     B_dict = {midi_note: get_B_value(midi_note) for midi_note in ALL_MIDI_NOTES}
     print(json.dumps(B_dict))
     print("\n--- final_tuning (JSON) ---")
     print(json.dumps(final_tuning))
-    
+
 else:
     print("\nOptimization failed or did not converge:", result.message)
