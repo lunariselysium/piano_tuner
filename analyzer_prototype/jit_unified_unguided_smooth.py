@@ -12,7 +12,7 @@ ALL_MIDI_NOTES = range(21, 109)
 # --- NEW: SMOOTHING PARAMETER ---
 # Controls the penalty for "jaggedness" in the tuning curve.
 # Higher values result in a smoother curve. Start with values between 1.0 and 100.0.
-SMOOTHNESS_WEIGHT = 250.0
+SMOOTHNESS_WEIGHT = 40.0
 
 # Apply Numba's JIT compiler for significant speedup in these pure numerical functions.
 # nopython=True ensures no Python interpreter overhead, and cache=True saves compilation time on subsequent runs.
@@ -110,19 +110,26 @@ reference_tuning = create_reference_tuning()
 print("Generating weighted intervals...")
 intervals_to_check = intervals.generate_intervals_from_reference(
     intervals_to_generate=[
-        'Octave', 'Double Octave', 'Perfect 5th', 'Perfect 4th',
-        'Major 3rd', 'Minor 3rd', 'Major 10th', 'Major 12th', 'Major 17th'
+        'Octave', 
+        'Double Octave', 
+        'Perfect 5th', 
+        'Perfect 4th',
+        'Major 3rd', 
+        # 'Minor 3rd', 
+        'Major 10th', 
+        # 'Major 12th', 
+        # 'Major 17th'
     ],
     custom_weights={
-        'Octave': 100.0,          # Highest priority
-        'Double Octave': 90.0,
-        'Perfect 5th': 20.0,      # High priority, but clearly below octaves
-        'Perfect 4th': 20.0,
-        'Major 12th': 15.0,       # A fifth plus an octave
-        'Major 3rd': 5.0,
-        'Minor 3rd': 4.0,
-        'Major 10th': 3.0,
-        'Major 17th': 1.0,        # Lowest priority
+        'Octave': 4.0,          # Highest priority
+        'Double Octave': 2.0,
+        'Perfect 5th': 3.0,      # High priority, but clearly below octaves
+        'Perfect 4th': 3.5,
+        'Major 12th': 1.0,       # A fifth plus an octave
+        'Major 3rd': 0.1,
+        'Minor 3rd': 0.1,
+        'Major 10th': 0.5,
+        'Major 17th': 0.1,        # Lowest priority
     },
     reference_note_midi=MIDI_A4
 )
@@ -141,7 +148,8 @@ for n1, n2, p1, p2, weight in intervals_to_check:
     f1_ideal = reference_tuning[n1]
     f2_ideal = reference_tuning[n2]
     target = abs((p1 * f1_ideal) - (p2 * f2_ideal))
-    targets_list.append(target)
+    # targets_list.append(target)
+    targets_list.append(0)
 
 intervals_array = np.array(intervals_array_list, dtype=np.float64)
 targets_array = np.array(targets_list, dtype=np.float64)
@@ -186,7 +194,7 @@ result = basinhopping(
     func=cost_function_wrapper,
     x0=initial_guess,
     minimizer_kwargs=minimizer_kwargs,
-    niter=100,
+    niter=200,
     T=1.0,
     disp=True
 )
