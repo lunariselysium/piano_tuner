@@ -1,0 +1,16 @@
+Id;Designator;Footprint;Quantity;Designation;Supplier and ref
+1;J6,J5;amphenol_10103594-0001lf;2;USB_OTG;szlcsc
+2;D4,D2,D3,D1;LED_0201_0603Metric_Pad0.64x0.40mm_HandSolder;4;RED;szlcsc
+3;C1,C5,C2,C4,C3;C_0201_0603Metric_Pad0.64x0.40mm_HandSolder;5;22uF;szlcsc
+4;R4;R_0201_0603Metric_Pad0.64x0.40mm_HandSolder;1;0.5R;szlcsc
+5;M1;CM0;1;CM0;tb
+6;R2,R3;R_0201_0603Metric_Pad0.64x0.40mm_HandSolder;2;1.2K;szlcsc
+7;U1;SOP127P600X165-9N;1;IP5306;szlcsc
+8;J1;JST_PH_S2B-PH-K_1x02_P2.00mm_Horizontal;1;Conn_01x02_Socket;szlcsc
+9;J3;Hirose_FH12-22S-0.5SH_1x22-1MP_P0.50mm_Horizontal;1;Conn_01x22_Female;tb
+10;C7,C6;C_0201_0603Metric_Pad0.64x0.40mm_HandSolder;2;10uF;szlcsc
+11;R5;R_0201_0603Metric_Pad0.64x0.40mm_HandSolder;1;2R;szlcsc
+12;L1;L_Changjiang_FXL0420;1;1uH;szlcsc
+13;J8;PinHeader_1x02_P2.54mm_Vertical;1;Conn_01x02;szlcsc
+14;SW1;SW-SMD_2P-TS24CA;1;TS24CA;szlcsc
+15;R1;R_0201_0603Metric_Pad0.64x0.40mm_HandSolder;1;10K;szlcsc

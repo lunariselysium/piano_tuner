@@ -1,0 +1,208 @@
+(footprint "CUS-12B"
+	(version 20241229)
+	(generator "pcbnew")
+	(generator_version "9.0")
+	(layer "F.Cu")
+	(descr "CUS-12TBLOW-PROFILE SLIDE SWITCHES")
+	(property "Reference" "REF**"
+		(at 0 0 0)
+		(layer "F.SilkS")
+		(uuid "41b937af-9413-4c38-8082-7b4a06b5ca90")
+		(effects
+			(font
+				(size 0.787402 0.787402)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" "CUS-12B"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(uuid "ffd91de1-f3f3-4b07-9e3c-201c2738780f")
+		(effects
+			(font
+				(size 0.787402 0.787402)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "2efd45e5-1fca-4c0b-b368-00c4db70df35")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "c8fffc30-5a1d-48ba-9f41-da7c3b054131")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(attr smd)
+	(fp_line
+		(start -3.3 -1.3)
+		(end 3.4 -1.3)
+		(stroke
+			(width 0.127)
+			(type solid)
+		)
+		(layer "Dwgs.User")
+		(uuid "dd72c221-9a58-4b70-9008-f5b3217dcc13")
+	)
+	(fp_line
+		(start -3.3 1.3)
+		(end -3.3 -1.3)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "Dwgs.User")
+		(uuid "74cae059-56d0-4034-bb6f-47825b9dee75")
+	)
+	(fp_line
+		(start 0.1 1.3)
+		(end -3.3 1.3)
+		(stroke
+			(width 0.127)
+			(type solid)
+		)
+		(layer "Dwgs.User")
+		(uuid "a96a19c5-c448-47f0-867e-9e0b2aafac3c")
+	)
+	(fp_line
+		(start 0.1 1.3)
+		(end 0.1 2.8)
+		(stroke
+			(width 0.127)
+			(type solid)
+		)
+		(layer "Dwgs.User")
+		(uuid "7b342332-c083-40ca-85e3-47da3cf2902e")
+	)
+	(fp_line
+		(start 0.1 2.8)
+		(end 1.4 2.8)
+		(stroke
+			(width 0.127)
+			(type solid)
+		)
+		(layer "Dwgs.User")
+		(uuid "002b4017-6715-4174-9825-0a7ee3f7c213")
+	)
+	(fp_line
+		(start 1.4 1.3)
+		(end 0.1 1.3)
+		(stroke
+			(width 0.127)
+			(type solid)
+		)
+		(layer "Dwgs.User")
+		(uuid "408c2e22-efa1-4658-9346-569faf976893")
+	)
+	(fp_line
+		(start 1.4 2.8)
+		(end 1.4 1.3)
+		(stroke
+			(width 0.127)
+			(type solid)
+		)
+		(layer "Dwgs.User")
+		(uuid "7b0fa99d-e81e-466a-aa04-62c166ce450d")
+	)
+	(fp_line
+		(start 3.4 -1.3)
+		(end 3.4 1.3)
+		(stroke
+			(width 0.127)
+			(type solid)
+		)
+		(layer "Dwgs.User")
+		(uuid "66bb5d3c-9840-49a9-ac6c-8e6b91fb2cfd")
+	)
+	(fp_line
+		(start 3.4 1.3)
+		(end 1.4 1.3)
+		(stroke
+			(width 0.127)
+			(type solid)
+		)
+		(layer "Dwgs.User")
+		(uuid "1dc22660-e836-4ddd-8d35-7f8e8e0910b7")
+	)
+	(pad "" np_thru_hole circle
+		(at -1.5 0)
+		(size 0.9 0.9)
+		(drill 0.9)
+		(layers "*.Cu" "*.Mask")
+		(uuid "2a5826ad-0efb-41ff-b3c4-64b8c327b395")
+	)
+	(pad "" np_thru_hole circle
+		(at 1.5 0)
+		(size 0.9 0.9)
+		(drill 0.9)
+		(layers "*.Cu" "*.Mask")
+		(uuid "ca0f05e6-42b9-47c0-a549-64562d2a48ea")
+	)
+	(pad "P$1" smd rect
+		(at -2.25 -1.75)
+		(size 0.7 1.5)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(solder_mask_margin 0.102)
+		(uuid "86cf2aa1-588c-40dd-8b30-64ca38c369da")
+	)
+	(pad "P$2" smd rect
+		(at 0.75 -1.75)
+		(size 0.7 1.5)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(solder_mask_margin 0.102)
+		(uuid "87f0e1f0-ea91-4e15-9fa9-694c555efd41")
+	)
+	(pad "P$3" smd rect
+		(at 2.25 -1.75)
+		(size 0.7 1.5)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(solder_mask_margin 0.102)
+		(uuid "95bf7977-39b6-4ade-a01e-fc3ff7486bbd")
+	)
+	(pad "P$4" smd rect
+		(at -3.65 -1)
+		(size 1 0.8)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(solder_mask_margin 0.102)
+		(uuid "63be4360-a919-4fdb-a577-80b6d5ecd012")
+	)
+	(pad "P$5" smd rect
+		(at -3.65 1)
+		(size 1 0.8)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(solder_mask_margin 0.102)
+		(uuid "3926efe1-9795-4ebb-945d-b1d8e71189e4")
+	)
+	(pad "P$6" smd rect
+		(at 3.65 1)
+		(size 1 0.8)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(solder_mask_margin 0.102)
+		(uuid "e41e3fe3-238a-4ea9-8de6-50140a2b055d")
+	)
+	(pad "P$7" smd rect
+		(at 3.65 -1)
+		(size 1 0.8)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(solder_mask_margin 0.102)
+		(uuid "7e447000-bee7-4fbd-87ef-b0997582e8d6")
+	)
+	(embedded_fonts no)
+)
