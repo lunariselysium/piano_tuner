@@ -3,7 +3,7 @@ import numpy as np
 from scipy.optimize import curve_fit
 
 # --- CONFIGURATION ---
-DEVICE_ID = 3      # Let the user choose the device
+DEVICE_ID = 3         # Let the user choose the device
 CHANNELS = 1          # Mono channel is sufficient for frequency analysis
 RATE = 48000          # Your mic's native sample rate
 CHUNK = 4096          # Increased buffer size for better frequency resolution

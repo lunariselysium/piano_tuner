@@ -1,0 +1,259 @@
+import kivy
+from kivy.app import App
+from kivy.lang import Builder
+from kivy.uix.screenmanager import ScreenManager, Screen
+from kivy.uix.boxlayout import BoxLayout
+from kivy.clock import Clock
+from kivy.properties import ObjectProperty
+import threading
+import numpy as np
+
+# Import our modules
+import config
+from hardware import AudioEngine, TunerDevice
+from calculation import OptimizationService
+
+# Fix for some Raspberry Pi window providers
+import os
+#os.environ['KIVY_GL_BACKEND'] = 'gl' #not used for windows testing
+
+class BaseScreen(Screen):
+    pass
+
+class ConnectionScreen(BaseScreen):
+    def connect_devices(self):
+        mic_name = self.ids.mic_spinner.text
+        bt_name = self.ids.bt_spinner.text
+        
+        # 1. Init Audio
+        try:
+            # Parse ID from string (simplified)
+            dev_id = config.DEFAULT_SAMPLE_RATE # Placeholder
+            # In real app, parse ID from `mic_name`
+            app = App.get_running_app()
+            app.audio.start_stream(device_id=None) # Default
+            
+            # 2. Init BT
+            if app.tuner.connect(bt_name):
+                self.ids.status_lbl.text = "Connected!"
+                self.ids.status_lbl.color = (0,1,0,1)
+                Clock.schedule_once(lambda dt: setattr(app.sm, 'current', 'calibration'), 1)
+        except Exception as e:
+            self.ids.status_lbl.text = f"Error: {str(e)}"
+
+class CalibrationScreen(BaseScreen):
+    def on_enter(self):
+        self.event = Clock.schedule_interval(self.update_ui, 0.05)
+    
+    def on_leave(self):
+        Clock.unschedule(self.event)
+
+    def update_ui(self, dt):
+        app = App.get_running_app()
+        rms = app.audio.rms
+        # Normalize RMS visually (0-100)
+        norm_val = min(100, (rms / 200000)) 
+        self.ids.rms_bar.value = norm_val
+        
+        threshold = self.ids.sense_slider.value
+        # If RMS > Threshold, turn bar color
+        if rms > threshold:
+            # Green in Kivy
+            pass 
+
+    def update_sensitivity(self, value):
+        app = App.get_running_app()
+        app.audio.sensitivity = value
+
+class InstructionScreen(BaseScreen):
+    pass
+
+class MeasurementScreen(BaseScreen):
+    def on_enter(self):
+        self.app = App.get_running_app()
+        self.note_list = list(range(config.MEASURE_START_MIDI, config.MEASURE_END_MIDI + 1))
+        self.current_index = 0
+        self.measured_data = {}
+        
+        self.update_target_display()
+        self.event = Clock.schedule_interval(self.check_audio, 0.1)
+
+    def on_leave(self):
+        Clock.unschedule(self.event)
+
+    def update_target_display(self):
+        midi = self.note_list[self.current_index]
+        note_name = self.midi_to_name(midi)
+        self.ids.note_target_lbl.text = note_name
+        self.ids.progress_bar.value = (self.current_index / len(self.note_list)) * 100
+
+    def check_audio(self, dt):
+        # Poll audio engine for results
+        if self.app.audio.ready_for_analysis:
+            result = self.app.audio.last_analysis_result
+            self.app.audio.ready_for_analysis = False # Reset flag
+            
+            freq = result['freq']
+            midi = self.note_list[self.current_index]
+            
+            # Simple validation: is freq roughly near expected midi?
+            # (Skipped for demo, assuming perfect input)
+            
+            self.ids.status_lbl.text = f"Captured: {freq:.1f}Hz"
+            self.ids.status_lbl.color = config.COLOR_PRIMARY
+            
+            # Store data
+            self.measured_data[midi] = result['B']
+            
+            # Move Next
+            Clock.schedule_once(self.next_note, 1.0)
+
+    def next_note(self, dt=None):
+        self.ids.status_lbl.text = "Listening..."
+        self.ids.status_lbl.color = (1,1,1,1)
+        
+        self.current_index += 1
+        if self.current_index >= len(self.note_list):
+            # DONE
+            self.app.measured_inharmonicity = self.measured_data
+            self.app.sm.current = 'calculation'
+        else:
+            self.update_target_display()
+
+    def skip_note(self):
+        # Mark as 0 or estimated
+        midi = self.note_list[self.current_index]
+        self.measured_data[midi] = 0.0001 # Default B
+        self.next_note()
+
+    def midi_to_name(self, midi):
+        notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+        octave = (midi // 12) - 1
+        name = notes[midi % 12]
+        return f"{name}{octave}"
+
+class CalculationScreen(BaseScreen):
+    def on_enter(self):
+        app = App.get_running_app()
+        # Start the multiprocessing task
+        app.optimizer.start_calculation(app.measured_inharmonicity)
+        self.event = Clock.schedule_interval(self.check_process, 0.5)
+
+    def check_process(self, dt):
+        app = App.get_running_app()
+        status = app.optimizer.check_status()
+        
+        if status == 'done':
+            app.tuning_targets = app.optimizer.get_results()
+            Clock.unschedule(self.event)
+            app.sm.current = 'tuning'
+
+class TuningScreen(BaseScreen):
+    def on_enter(self):
+        self.app = App.get_running_app()
+        # Create ordered list of targets
+        self.target_keys = sorted(self.app.tuning_targets.keys())
+        self.current_idx = 0
+        self.update_screen()
+        self.event = Clock.schedule_interval(self.tuning_loop, 0.1)
+
+    def on_leave(self):
+        Clock.unschedule(self.event)
+
+    def update_screen(self):
+        midi = self.target_keys[self.current_idx]
+        target_f = self.app.tuning_targets[midi]
+        
+        self.ids.target_note_lbl.text = self.get_note_name(midi)
+        self.ids.target_freq_lbl.text = f"{target_f:.2f} Hz"
+        self.ids.current_freq_lbl.text = "-- Hz"
+        self.ids.needle.pos_hint = {'center_x': 0.5, 'center_y': 0.45}
+
+    def tuning_loop(self, dt):
+        if self.app.audio.ready_for_analysis:
+            res = self.app.audio.last_analysis_result
+            self.app.audio.ready_for_analysis = False
+            
+            curr_freq = res['freq']
+            midi = self.target_keys[self.current_idx]
+            target_freq = self.app.tuning_targets[midi]
+            
+            # Cents deviation formula
+            if curr_freq > 0 and target_freq > 0:
+                cents = 1200 * np.log2(curr_freq / target_freq)
+            else:
+                cents = 0
+
+            self.ids.current_freq_lbl.text = f"{curr_freq:.1f} Hz"
+
+            # Update Needle (Visual mapping: +/- 50 cents range)
+            # Center is 0.5. Range is 0.0 to 1.0
+            pos = 0.5 + (cents / 100.0)
+            pos = max(0.1, min(0.9, pos)) # Clamp
+            self.ids.needle.pos_hint = {'center_x': pos, 'center_y': 0.45}
+            
+            # Tuning Logic
+            if abs(cents) < 2: # Tolerance
+                self.ids.action_log.text = "IN TUNE!"
+                self.ids.action_log.color = (0,1,0,1)
+            else:
+                self.ids.action_log.color = config.COLOR_PRIMARY
+                if cents < 0:
+                    self.ids.action_log.text = "Sending: UP"
+                    self.app.tuner.send_command("STEP_UP", abs(cents))
+                else:
+                    self.ids.action_log.text = "Sending: DOWN"
+                    self.app.tuner.send_command("STEP_DOWN", abs(cents))
+
+    def next_note(self):
+        if self.current_idx < len(self.target_keys) - 1:
+            self.current_idx += 1
+            self.update_screen()
+
+    def get_note_name(self, midi):
+        # Same helper
+        notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+        octave = (midi // 12) - 1
+        return f"{notes[midi % 12]}{octave}"
+
+class PianoTunerApp(App):
+    colors = config # Make config accessible in KV
+    
+    def build(self):
+        self.title = "Pi Piano Tuner"
+
+        Builder.load_file('tuner.kv') 
+        
+        # Init Logic Modules
+        self.audio = AudioEngine()
+        self.tuner = TunerDevice()
+        self.optimizer = OptimizationService()
+        
+        # State Data
+        self.measured_inharmonicity = {}
+        self.tuning_targets = {}
+
+        # Screen Manager
+        self.sm = ScreenManager()
+        self.sm.add_widget(ConnectionScreen())
+        self.sm.add_widget(CalibrationScreen())
+        self.sm.add_widget(InstructionScreen())
+        self.sm.add_widget(MeasurementScreen())
+        self.sm.add_widget(CalculationScreen())
+        self.sm.add_widget(TuningScreen())
+        
+        return self.sm
+
+    def get_audio_devices(self):
+        # Helper for Spinner
+        try:
+            devs = self.audio.get_devices()
+            return [d['name'] for d in devs]
+        except:
+            return ["Default Mic"]
+        
+    def on_stop(self):
+        self.audio.stop_stream()
+
+if __name__ == "__main__":
+    PianoTunerApp().run()

@@ -1,0 +1,299 @@
+#:import hex kivy.utils.get_color_from_hex
+
+<BaseScreen>:
+    canvas.before:
+        Color:
+            rgba: app.colors.BG_DARK
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
+<RoundedButton@Button>:
+    background_normal: ''
+    background_color: 0,0,0,0
+    color: 1, 1, 1, 1
+    font_size: '20sp'
+    canvas.before:
+        Color:
+            rgba: app.colors.PRIMARY if self.state == 'normal' else app.colors.ACCENT_1
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [10,]
+
+<StatusLabel@Label>:
+    font_size: '18sp'
+    color: 0.8, 0.8, 0.8, 1
+
+# --- SCREEN 1: CONNECTION ---
+<ConnectionScreen>:
+    name: 'connection'
+    BoxLayout:
+        orientation: 'vertical'
+        padding: 40
+        spacing: 20
+
+        Label:
+            text: "SYSTEM SETUP"
+            font_size: '32sp'
+            color: app.colors.PRIMARY
+            size_hint_y: 0.2
+
+        BoxLayout:
+            orientation: 'vertical'
+            spacing: 10
+            size_hint_y: 0.4
+            
+            Label:
+                text: "Select Audio Input:"
+                halign: 'left'
+                text_size: self.size
+            
+            Spinner:
+                id: mic_spinner
+                text: 'Select Microphone'
+                values: app.get_audio_devices()
+                background_color: app.colors.ACCENT_1
+                color: 1,1,1,1
+                height: '50dp'
+                size_hint_y: None
+
+            Label:
+                text: "Select Tuner Device:"
+                halign: 'left'
+                text_size: self.size
+                
+            Spinner:
+                id: bt_spinner
+                text: 'Select BT Device'
+                values: ['Tuner_Module_V1', 'Debug_Virtual_Dev']
+                background_color: app.colors.ACCENT_1
+                height: '50dp'
+                size_hint_y: None
+
+        Label:
+            id: status_lbl
+            text: "Status: Disconnected"
+            color: app.colors.DANGER
+
+        RoundedButton:
+            text: "CONNECT & INITIALIZE"
+            size_hint_y: 0.2
+            on_release: root.connect_devices()
+
+# --- SCREEN 2: CALIBRATION ---
+<CalibrationScreen>:
+    name: 'calibration'
+    BoxLayout:
+        orientation: 'vertical'
+        padding: 40
+        spacing: 20
+
+        Label:
+            text: "MICROPHONE CHECK"
+            font_size: '28sp'
+            color: app.colors.PRIMARY
+            size_hint_y: 0.15
+
+        Label:
+            text: "Adjust slider so the bar reacts only when you play."
+            font_size: '16sp'
+            size_hint_y: 0.1
+
+        # RMS BAR
+        ProgressBar:
+            id: rms_bar
+            max: 100
+            value: 0
+            size_hint_y: 0.1
+            canvas.after:
+                Color:
+                    rgba: 1,1,1,0.3
+                Line:
+                    width: 2
+                    rectangle: (self.x, self.y, self.width, self.height)
+
+        BoxLayout:
+            size_hint_y: 0.2
+            Label:
+                text: "Sensitivity:"
+                size_hint_x: 0.3
+            Slider:
+                id: sense_slider
+                min: 1000000
+                max: 20000000
+                value: 8000000
+                on_value: root.update_sensitivity(self.value)
+
+        RoundedButton:
+            text: "CONFIRM & NEXT"
+            size_hint_y: 0.2
+            on_release: app.sm.current = 'instruction'
+
+# --- SCREEN 3: INSTRUCTION ---
+<InstructionScreen>:
+    name: 'instruction'
+    BoxLayout:
+        orientation: 'vertical'
+        padding: 50
+        spacing: 30
+
+        Label:
+            text: "PREPARE PIANO"
+            font_size: '32sp'
+            color: app.colors.PRIMARY
+
+        Label:
+            text: "1. Remove cabinet panels.\n2. Insert temperament strip to mute left/right strings.\n3. We will measure Center strings first."
+            halign: 'center'
+            font_size: '20sp'
+
+        RoundedButton:
+            text: "START MEASUREMENT"
+            size_hint_y: 0.25
+            on_release: app.sm.current = 'measurement'
+
+# --- SCREEN 4: MEASUREMENT ---
+<MeasurementScreen>:
+    name: 'measurement'
+    BoxLayout:
+        orientation: 'vertical'
+        padding: 20
+        spacing: 10
+
+        Label:
+            text: "DATA GATHERING"
+            font_size: '24sp'
+            color: app.colors.ACCENT_1
+            size_hint_y: 0.1
+
+        BoxLayout:
+            orientation: 'vertical'
+            size_hint_y: 0.5
+            
+            Label:
+                text: "Please Play Note:"
+                font_size: '20sp'
+            
+            Label:
+                id: note_target_lbl
+                text: "A4"
+                font_size: '60sp'
+                color: app.colors.PRIMARY
+                bold: True
+
+        Label:
+            id: status_lbl
+            text: "Listening..."
+            font_size: '24sp'
+            size_hint_y: 0.2
+
+        ProgressBar:
+            id: progress_bar
+            max: 100
+            value: 0
+            size_hint_y: 0.05
+
+        RoundedButton:
+            text: "SKIP NOTE"
+            size_hint_y: 0.15
+            background_color: app.colors.ACCENT_1
+            on_release: root.skip_note()
+
+# --- SCREEN 5: CALCULATION LOADING ---
+<CalculationScreen>:
+    name: 'calculation'
+    BoxLayout:
+        orientation: 'vertical'
+        padding: 60
+        
+        Label:
+            text: "OPTIMIZING TUNING CURVE"
+            font_size: '24sp'
+            color: app.colors.PRIMARY
+        
+        Label:
+            text: "Running complex math..."
+            font_size: '18sp'
+            
+        Label:
+            text: "(This utilizes multiprocessing)"
+            font_size: '14sp'
+            color: 0.5, 0.5, 0.5, 1
+
+# --- SCREEN 6: TUNING ---
+<TuningScreen>:
+    name: 'tuning'
+    FloatLayout:
+        # Top Header
+        Label:
+            text: "ACTIVE TUNING"
+            pos_hint: {'center_x': 0.5, 'top': 0.98}
+            size_hint: (1, 0.1)
+            color: app.colors.ACCENT_1
+
+        # Main Target Note
+        Label:
+            id: target_note_lbl
+            text: "A4"
+            font_size: '50sp'
+            bold: True
+            pos_hint: {'center_x': 0.2, 'center_y': 0.7}
+            color: app.colors.PRIMARY
+
+        Label:
+            id: target_freq_lbl
+            text: "440.0 Hz"
+            font_size: '20sp'
+            pos_hint: {'center_x': 0.2, 'center_y': 0.6}
+
+        # The Deviation Gauge (Visualized as a bar for now)
+        Label:
+            text: "FLAT                                SHARP"
+            pos_hint: {'center_x': 0.5, 'center_y': 0.55}
+            font_size: '12sp'
+
+        BoxLayout:
+            pos_hint: {'center_x': 0.5, 'center_y': 0.45}
+            size_hint: (0.8, 0.1)
+            canvas:
+                # Center Line
+                Color: 
+                    rgba: 1,1,1,1
+                Line:
+                    points: [self.center_x, self.y, self.center_x, self.top]
+                    width: 2
+                
+        # Moving Indicator (The "Needle")
+        Widget:
+            id: needle
+            size_hint: (None, None)
+            size: (4, 40)
+            pos_hint: {'center_x': 0.5, 'center_y': 0.45}
+            canvas:
+                Color:
+                    rgba: app.colors.DANGER
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
+
+        # Current Reading
+        Label:
+            id: current_freq_lbl
+            text: "-- Hz"
+            font_size: '30sp'
+            pos_hint: {'center_x': 0.5, 'center_y': 0.3}
+
+        # Action Log
+        Label:
+            id: action_log
+            text: "Waiting for input..."
+            pos_hint: {'center_x': 0.5, 'center_y': 0.15}
+            color: app.colors.ACCENT_1
+
+        # Next Button
+        Button:
+            text: ">"
+            size_hint: (0.15, 0.15)
+            pos_hint: {'right': 0.95, 'bottom': 0.05}
+            on_release: root.next_note()
