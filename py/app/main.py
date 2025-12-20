@@ -83,6 +83,10 @@ class MeasurementScreen(BaseScreen):
         self.current_index = 0
         self.measured_data = {}
         
+        self.current_samples = [] # Buffer for 5 samples
+        self.waiting_for_silence = False
+        self.silence_timer = 0
+        
         self.update_target_display()
         self.event = Clock.schedule_interval(self.check_audio, 0.1)
 
@@ -98,6 +102,19 @@ class MeasurementScreen(BaseScreen):
         self.ids.status_lbl.color = (1,1,1,1)
 
     def check_audio(self, dt):
+        # Silence check to prevent "speeding through" notes
+        if self.waiting_for_silence:
+            if self.app.audio.rms < (self.app.audio.sensitivity / 2):
+                self.silence_timer += dt
+                if self.silence_timer > 0.5: # 0.5s of silence required
+                    self.waiting_for_silence = False
+                    self.update_target_display()
+            else:
+                self.silence_timer = 0
+                self.ids.status_lbl.text = "Please release key..."
+                self.ids.status_lbl.color = config.ACCENT_1
+            return
+
         # Poll audio engine for results
         if self.app.audio.ready_for_analysis:
             result = self.app.audio.last_analysis_result
@@ -111,14 +128,26 @@ class MeasurementScreen(BaseScreen):
             min_valid, max_valid = ideal_freq / 1.06, ideal_freq * 1.06 # +/- 1 semitone
             
             if min_valid <= detected_freq <= max_valid:
-                self.ids.status_lbl.text = f"Captured: {detected_freq:.1f}Hz"
-                self.ids.status_lbl.color = config.PRIMARY
+                # Accumulate sample
+                self.current_samples.append(result['B'])
+                count = len(self.current_samples)
                 
-                # Store data
-                self.measured_data[midi_target] = result['B']
-                
-                # Move Next
-                Clock.schedule_once(self.next_note, 1.0)
+                if count < 5:
+                    self.ids.status_lbl.text = f"Sample {count}/5 Captured"
+                    self.ids.status_lbl.color = config.PRIMARY
+                    self.waiting_for_silence = True # Require release between samples
+                    self.silence_timer = 0
+                else:
+                    self.ids.status_lbl.text = f"Captured: {detected_freq:.1f}Hz"
+                    self.ids.status_lbl.color = config.PRIMARY
+                    
+                    # Calculate B average (remove lowest and highest)
+                    s = sorted(self.current_samples)
+                    avg_b = sum(s[1:4]) / 3
+                    self.measured_data[midi_target] = avg_b
+                    
+                    self.current_samples = [] # Reset buffer
+                    Clock.schedule_once(self.next_note, 1.0)
             else:
                 msg = "Too High!" if detected_freq > ideal_freq else "Too Low!"
                 self.ids.status_lbl.text = f"{msg} ({detected_freq:.0f}Hz)"
@@ -131,12 +160,14 @@ class MeasurementScreen(BaseScreen):
             self.app.measured_inharmonicity = self.measured_data
             self.app.sm.current = 'calculation'
         else:
-            self.update_target_display()
+            self.waiting_for_silence = True # Require release between notes
+            self.silence_timer = 0
 
     def skip_note(self):
         # Mark as 0 or estimated
         midi = self.note_list[self.current_index]
         self.measured_data[midi] = 0.0001 # Default B
+        self.current_samples = []
         self.next_note()
 
     def midi_to_name(self, midi):
