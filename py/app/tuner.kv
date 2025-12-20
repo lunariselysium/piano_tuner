@@ -96,22 +96,43 @@
             size_hint_y: 0.15
 
         Label:
-            text: "Adjust slider so the bar reacts only when you play."
+            text: "Adjust slider so the line is just above the background noise."
             font_size: '16sp'
             size_hint_y: 0.1
 
-        # RMS BAR
-        ProgressBar:
-            id: rms_bar
-            max: 100
-            value: 0
+        # METER CONTAINER
+        RelativeLayout:
+            size_hint_y: 0.15
+            
+            # The Background Bar (Volume)
+            ProgressBar:
+                id: rms_bar
+                max: 100
+                value: 0
+                pos_hint: {'x': 0, 'center_y': 0.5}
+                size_hint_x: 1
+            
+            # The Threshold Marker (Line)
+            Widget:
+                id: threshold_line
+                size_hint: (None, 1)
+                width: 2
+                # Pos will be updated in code
+                pos: (0, 0) 
+                canvas:
+                    Color:
+                        rgba: app.colors.DANGER
+                    Rectangle:
+                        pos: self.pos
+                        size: self.size
+
+        # Numeric Feedback
+        Label:
+            id: numeric_lbl
+            text: "RMS: 0 | Threshold: 0"
+            font_size: '14sp'
+            color: 0.6, 0.6, 0.6, 1
             size_hint_y: 0.1
-            canvas.after:
-                Color:
-                    rgba: 1,1,1,0.3
-                Line:
-                    width: 2
-                    rectangle: (self.x, self.y, self.width, self.height)
 
         BoxLayout:
             size_hint_y: 0.2
@@ -120,9 +141,10 @@
                 size_hint_x: 0.3
             Slider:
                 id: sense_slider
-                min: 1000000
-                max: 20000000
-                value: 8000000
+                min: 100000
+                max: 10000000
+                value: 2000000
+                step: 100000
                 on_value: root.update_sensitivity(self.value)
 
         RoundedButton:

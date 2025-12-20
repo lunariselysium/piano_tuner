@@ -51,15 +51,23 @@ class CalibrationScreen(BaseScreen):
     def update_ui(self, dt):
         app = App.get_running_app()
         rms = app.audio.rms
-        # Normalize RMS visually (0-100)
-        norm_val = min(100, (rms / 200000)) 
+        threshold = self.ids.sense_slider.value
+        
+        # Numeric feedback for easier calibration
+        self.ids.numeric_lbl.text = f"RMS: {int(rms):,} | Threshold: {int(threshold):,}"
+        
+        # Normalize RMS visually (Reference 10M for 32-bit audio interfaces)
+        visual_max = 10000000
+        norm_val = min(100, (rms / visual_max) * 100) 
         self.ids.rms_bar.value = norm_val
         
-        threshold = self.ids.sense_slider.value
-        # If RMS > Threshold, turn bar color
-        if rms > threshold:
-            # Green in Kivy
-            pass 
+        # Update Threshold Line Position on the bar
+        bar = self.ids.rms_bar
+        threshold_pct = min(1.0, threshold / visual_max)
+        line_x = bar.x + (bar.width * threshold_pct)
+        
+        self.ids.threshold_line.pos = (line_x, bar.y)
+        self.ids.threshold_line.height = bar.height
 
     def update_sensitivity(self, value):
         app = App.get_running_app()
@@ -86,6 +94,8 @@ class MeasurementScreen(BaseScreen):
         note_name = self.midi_to_name(midi)
         self.ids.note_target_lbl.text = note_name
         self.ids.progress_bar.value = (self.current_index / len(self.note_list)) * 100
+        self.ids.status_lbl.text = "Listening..."
+        self.ids.status_lbl.color = (1,1,1,1)
 
     def check_audio(self, dt):
         # Poll audio engine for results
@@ -93,25 +103,28 @@ class MeasurementScreen(BaseScreen):
             result = self.app.audio.last_analysis_result
             self.app.audio.ready_for_analysis = False # Reset flag
             
-            freq = result['freq']
-            midi = self.note_list[self.current_index]
+            detected_freq = result['freq']
+            midi_target = self.note_list[self.current_index]
             
-            # Simple validation: is freq roughly near expected midi?
-            # (Skipped for demo, assuming perfect input)
+            # --- VALIDATION LOGIC ---
+            ideal_freq = 440.0 * (2**((midi_target - 69) / 12.0))
+            min_valid, max_valid = ideal_freq / 1.06, ideal_freq * 1.06 # +/- 1 semitone
             
-            self.ids.status_lbl.text = f"Captured: {freq:.1f}Hz"
-            self.ids.status_lbl.color = config.COLOR_PRIMARY
-            
-            # Store data
-            self.measured_data[midi] = result['B']
-            
-            # Move Next
-            Clock.schedule_once(self.next_note, 1.0)
+            if min_valid <= detected_freq <= max_valid:
+                self.ids.status_lbl.text = f"Captured: {detected_freq:.1f}Hz"
+                self.ids.status_lbl.color = config.PRIMARY
+                
+                # Store data
+                self.measured_data[midi_target] = result['B']
+                
+                # Move Next
+                Clock.schedule_once(self.next_note, 1.0)
+            else:
+                msg = "Too High!" if detected_freq > ideal_freq else "Too Low!"
+                self.ids.status_lbl.text = f"{msg} ({detected_freq:.0f}Hz)"
+                self.ids.status_lbl.color = config.DANGER
 
     def next_note(self, dt=None):
-        self.ids.status_lbl.text = "Listening..."
-        self.ids.status_lbl.color = (1,1,1,1)
-        
         self.current_index += 1
         if self.current_index >= len(self.note_list):
             # DONE
@@ -178,6 +191,10 @@ class TuningScreen(BaseScreen):
             midi = self.target_keys[self.current_idx]
             target_freq = self.app.tuning_targets[midi]
             
+            # Noise filter: Ignore sounds far from target
+            if abs(curr_freq - target_freq) > 100:
+                return
+
             # Cents deviation formula
             if curr_freq > 0 and target_freq > 0:
                 cents = 1200 * np.log2(curr_freq / target_freq)
@@ -197,7 +214,7 @@ class TuningScreen(BaseScreen):
                 self.ids.action_log.text = "IN TUNE!"
                 self.ids.action_log.color = (0,1,0,1)
             else:
-                self.ids.action_log.color = config.COLOR_PRIMARY
+                self.ids.action_log.color = config.PRIMARY
                 if cents < 0:
                     self.ids.action_log.text = "Sending: UP"
                     self.app.tuner.send_command("STEP_UP", abs(cents))
