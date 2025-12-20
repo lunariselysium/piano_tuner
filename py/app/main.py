@@ -104,9 +104,9 @@ class MeasurementScreen(BaseScreen):
     def check_audio(self, dt):
         # Silence check to prevent "speeding through" notes or getting stuck
         if self.waiting_for_silence:
-            # Adjusted Threshold: Use 90% of sensitivity instead of 50%.
+            # Adjusted Threshold: Use 100% of sensitivity instead of 50%.
             # This prevents getting stuck if the noise floor is close to sensitivity.
-            silence_thresh = self.app.audio.sensitivity * 0.9
+            silence_thresh = self.app.audio.sensitivity * 1
             
             if self.app.audio.rms < silence_thresh:
                 self.silence_timer += dt
