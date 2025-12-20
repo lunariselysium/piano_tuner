@@ -102,17 +102,29 @@ class MeasurementScreen(BaseScreen):
         self.ids.status_lbl.color = (1,1,1,1)
 
     def check_audio(self, dt):
-        # Silence check to prevent "speeding through" notes
+        # Silence check to prevent "speeding through" notes or getting stuck
         if self.waiting_for_silence:
-            if self.app.audio.rms < (self.app.audio.sensitivity / 2):
+            # Adjusted Threshold: Use 90% of sensitivity instead of 50%.
+            # This prevents getting stuck if the noise floor is close to sensitivity.
+            silence_thresh = self.app.audio.sensitivity * 0.9
+            
+            if self.app.audio.rms < silence_thresh:
                 self.silence_timer += dt
                 if self.silence_timer > 0.5: # 0.5s of silence required
                     self.waiting_for_silence = False
-                    self.update_target_display()
+                    # Visual update to show we are ready again
+                    self.ids.status_lbl.text = "Listening..."
+                    self.ids.status_lbl.color = (1,1,1,1)
             else:
                 self.silence_timer = 0
-                self.ids.status_lbl.text = "Please release key..."
+                # DEBUG INFO: Show current RMS vs Threshold so user knows why it's waiting
+                self.ids.status_lbl.text = f"Release Key ({int(self.app.audio.rms)} > {int(silence_thresh)})"
                 self.ids.status_lbl.color = config.ACCENT_1
+            
+            # CRITICAL: Discard stray analysis results while waiting for silence
+            if self.app.audio.ready_for_analysis:
+                self.app.audio.ready_for_analysis = False
+            
             return
 
         # Poll audio engine for results
@@ -162,6 +174,7 @@ class MeasurementScreen(BaseScreen):
         else:
             self.waiting_for_silence = True # Require release between notes
             self.silence_timer = 0
+            self.update_target_display()
 
     def skip_note(self):
         # Mark as 0 or estimated
