@@ -3,17 +3,128 @@ import numpy as np
 from scipy.optimize import curve_fit
 import threading
 import time
+import asyncio
+from bleak import BleakScanner, BleakClient
 
-# --- MOCK BLUETOOTH DEVICE ---
+# --- BLUETOOTH DEVICE (BLEAK + MOCK) ---
+SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
+CHAR_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+MOCK_ADDR = "00:00:00:00:00:00"
+
 class TunerDevice:
     def __init__(self):
+        self.client = None
         self.connected = False
+        self.is_mock = False
+        self.loop = asyncio.new_event_loop()
+        # Start asyncio loop in a separate thread to not block Kivy
+        self._thread = threading.Thread(target=self._start_loop, daemon=True)
+        self._thread.start()
 
-    def connect(self, device_name):
-        print(f"[BT] Connecting to {device_name}...")
-        time.sleep(1) # Fake delay
-        self.connected = True
-        print(f"[BT] Connected!")
+    def _start_loop(self):
+        asyncio.set_event_loop(self.loop)
+        self.loop.run_forever()
+
+    def _run_async(self, coro):
+        """Helper to submit async tasks to the background loop"""
+        return asyncio.run_coroutine_threadsafe(coro, self.loop)
+
+    def scan_devices(self, callback):
+        """Scans for devices and returns list to callback"""
+        async def _scan():
+            print("[BT] Scanning started...")
+            results = []
+            
+            # 1. Always add the Mock Device first (for debugging)
+            results.append(("DEBUG: Mock Tuner", MOCK_ADDR))
+
+            # 2. Scan Real Devices
+            try:
+                devices = await BleakScanner.discover(timeout=5.0)
+                
+                # Robust sort: Prioritize device with our Service UUID
+                def sort_key(d):
+                    # Safety check: metadata might be missing on some OS/versions
+                    uuids = d.metadata.get("uuids", []) if hasattr(d, "metadata") else []
+                    return 0 if SERVICE_UUID in uuids else 1
+                
+                sorted_devs = sorted(devices, key=sort_key)
+                
+                for d in sorted_devs:
+                    name = d.name or "Unknown"
+                    # Avoid duplicates if the mock address somehow appears in real life
+                    if d.address != MOCK_ADDR: 
+                        results.append((name, d.address))
+                        
+            except Exception as e:
+                print(f"[BT Scan Error] {e}")
+
+            print(f"[BT] Scan complete. Found {len(results)} devices.")
+            # 3. Return results to UI (Even if scan failed, we have the Mock device)
+            callback(results)
+
+        self._run_async(_scan())
+
+    def connect(self, address, callback):
+        # Reset state
+        self.connected = False
+        self.is_mock = False
+        
+        # --- MOCK CONNECTION PATH ---
+        if address == MOCK_ADDR:
+            print("[BT] Connecting to MOCK device...")
+            # Simulate a small network delay
+            def _mock_connect():
+                import time
+                time.sleep(0.5) 
+                self.connected = True
+                self.is_mock = True
+                print("[BT] MOCK Connected!")
+                callback(True)
+            
+            # Run in a thread so we don't block the UI thread
+            threading.Thread(target=_mock_connect).start()
+            return True
+
+        # --- REAL CONNECTION PATH ---
+        async def _connect():
+            print(f"[BT] Connecting to {address}...")
+            await asyncio.sleep(1.0)
+            try:
+                if self.client:
+                    await self.client.disconnect()
+                
+                self.client = BleakClient(address, timeout=10.0)
+                
+                await self.client.connect()
+
+                if self.client.is_connected:
+                    self.connected = True
+                    print("[BT] Connected successfully!")
+                    
+                    print("\n" + "="*40)
+                    print("CONNECTED: Showing Device Map")
+                    print("="*40)
+                    
+                    # Iterate through services
+                    for service in self.client.services:
+                        print(f"\n[Service] {service.description} (UUID: {service.uuid})")
+                        
+                        # Iterate through characteristics in this service
+                        for char in service.characteristics:
+                            props = ", ".join(char.properties)
+                            print(f"  └── [Char] {char.description} (UUID: {char.uuid})")
+                            print(f"             Properties: {props}")
+                    
+                    callback(True)
+                else:
+                    print("[BT] Connect call finished but is_connected is False")
+                    callback(False)
+            except Exception as e:
+                print(f"[BT Error] {e}")
+                callback(False)
+
+        self._run_async(_connect())
         return True
 
     def send_command(self, command, value=None):
@@ -21,8 +132,27 @@ class TunerDevice:
             print("[BT Error] Not connected")
             return
         
-        # Command logic
-        print(f"[BT SENT] CMD: {command} | VAL: {value}")
+        # --- MOCK SEND ---
+        if self.is_mock:
+            print(f"[BT MOCK SENT] CMD: {command}, 10 (Derived from Val: {value})")
+            return
+
+        # --- REAL SEND ---
+        async def _send():
+            try:
+                if self.client and self.client.is_connected:
+                    # Request: "CMD,10"
+                    payload_str = f"{command},10"
+                    payload = payload_str.encode('utf-8')
+                    
+                    print(f"[BT SENDING] {payload_str}")
+                    await self.client.write_gatt_char(CHAR_UUID, payload, response=True)
+                else:
+                    print("[BT Error] Client disconnected unexpectedly.")
+            except Exception as e:
+                print(f"[BT Write Error] {e}")
+
+        self._run_async(_send())
 
 # --- ANALYSIS HELPER FUNCTIONS ---
 def get_note_name(frequency):

@@ -21,25 +21,69 @@ class BaseScreen(Screen):
     pass
 
 class ConnectionScreen(BaseScreen):
+    def on_enter(self):
+        # Trigger scan when screen loads
+        self.ids.status_lbl.text = "Scanning for devices..."
+        self.ids.bt_spinner.values = ["Scanning..."]
+        
+        app = App.get_running_app()
+        # Call scan on background thread
+        app.tuner.scan_devices(self.update_device_list)
+
+    def update_device_list(self, devices):
+        # This runs on background thread, schedule UI update on main thread
+        Clock.schedule_once(lambda dt: self._update_spinner_ui(devices), 0)
+
+    def _update_spinner_ui(self, devices):
+        if not devices:
+            self.ids.bt_spinner.values = ["No Devices Found"]
+            self.ids.status_lbl.text = "Scan failed or no devices."
+            return
+
+        # Create "Name (Address)" strings for the spinner
+        self.device_map = {f"{name} ({addr})": addr for name, addr in devices}
+        self.ids.bt_spinner.values = list(self.device_map.keys())
+        
+        # Select the first one (which is our target if found, due to sorting)
+        if self.ids.bt_spinner.values:
+            self.ids.bt_spinner.text = self.ids.bt_spinner.values[0]
+            self.ids.status_lbl.text = "Select Device & Connect"
+
     def connect_devices(self):
+        selection = self.ids.bt_spinner.text
+        
+        if selection not in getattr(self, 'device_map', {}):
+            self.ids.status_lbl.text = "Invalid Device Selection"
+            return
+            
+        address = self.device_map[selection]
         mic_name = self.ids.mic_spinner.text
-        bt_name = self.ids.bt_spinner.text
         
         # 1. Init Audio
         try:
-            # Parse ID from string (simplified)
-            dev_id = config.DEFAULT_SAMPLE_RATE # Placeholder
-            # In real app, parse ID from `mic_name`
             app = App.get_running_app()
-            app.audio.start_stream(device_id=None) # Default
+            app.audio.start_stream(device_id=None) 
             
-            # 2. Init BT
-            if app.tuner.connect(bt_name):
-                self.ids.status_lbl.text = "Connected!"
-                self.ids.status_lbl.color = (0,1,0,1)
-                Clock.schedule_once(lambda dt: setattr(app.sm, 'current', 'calibration'), 1)
+            self.ids.status_lbl.text = "Connecting Bluetooth..."
+            
+            # 2. Init BT (Async Callback)
+            def on_connect_result(success):
+                Clock.schedule_once(lambda dt: self._on_connect_ui(success), 0)
+            
+            app.tuner.connect(address, on_connect_result)
+            
         except Exception as e:
             self.ids.status_lbl.text = f"Error: {str(e)}"
+
+    def _on_connect_ui(self, success):
+        app = App.get_running_app()
+        if success:
+            self.ids.status_lbl.text = "Connected!"
+            self.ids.status_lbl.color = (0,1,0,1)
+            Clock.schedule_once(lambda dt: setattr(app.sm, 'current', 'calibration'), 1)
+        else:
+            self.ids.status_lbl.text = "Connection Failed"
+            self.ids.status_lbl.color = (1,0,0,1)
 
 class CalibrationScreen(BaseScreen):
     def on_enter(self):
