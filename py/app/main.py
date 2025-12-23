@@ -132,7 +132,7 @@ class MeasurementScreen(BaseScreen):
         self.silence_timer = 0
         
         self.update_target_display()
-        self.event = Clock.schedule_interval(self.check_audio, 0.1)
+        self.event = Clock.schedule_interval(self.check_audio, 0.05)
 
     def on_leave(self):
         Clock.unschedule(self.event)
@@ -293,8 +293,9 @@ class TuningScreen(BaseScreen):
 
             # Update Needle (Visual mapping: +/- 50 cents range)
             # Center is 0.5. Range is 0.0 to 1.0
-            pos = 0.5 + (cents / 100.0)
-            pos = max(0.1, min(0.9, pos)) # Clamp
+            pos_calc = 0.5 + (cents / 100.0)
+            pos_calc = max(0.1, min(0.9, pos_calc)) # Clamp
+            pos = float(pos_calc) # Numpy to standard float
             self.ids.needle.pos_hint = {'center_x': pos, 'center_y': 0.45}
             
             # Tuning Logic
