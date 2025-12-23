@@ -25,6 +25,49 @@
     font_size: '18sp'
     color: 0.8, 0.8, 0.8, 1
 
+<StringVisualizer>:
+    size_hint: (None, None)
+    size: (150, 60)
+    canvas:
+        # --- LEFT STRING ---
+        Color:
+            rgba: (1, 0.2, 0.2, 1) if self.active_index == 0 else (0.3, 0.3, 0.3, 0.3)
+        Rectangle:
+            pos: self.x, self.y
+            size: 40, 60
+        
+        # --- CENTER STRING ---
+        Color:
+            rgba: (1, 0.2, 0.2, 1) if self.active_index == 1 else (0.3, 0.3, 0.3, 0.3)
+        Rectangle:
+            pos: self.x + 55, self.y
+            size: 40, 60
+
+        # --- RIGHT STRING ---
+        Color:
+            rgba: (1, 0.2, 0.2, 1) if self.active_index == 2 else (0.3, 0.3, 0.3, 0.3)
+        Rectangle:
+            pos: self.x + 110, self.y
+            size: 40, 60
+
+        # Labels for Mute/Play hints
+        Color: 
+            rgba: 1, 1, 1, 1
+    
+    # Simple labels to help user
+    Label:
+        text: "L"
+        pos: root.x, root.y - 20
+        size: 40, 20
+    Label:
+        text: "C"
+        pos: root.x + 55, root.y - 20
+        size: 40, 20
+    Label:
+        text: "R"
+        pos: root.x + 110, root.y - 20
+        size: 40, 20
+
 # --- SCREEN 1: CONNECTION ---
 <ConnectionScreen>:
     name: 'connection'
@@ -252,6 +295,23 @@
                 color: app.colors.PRIMARY
                 bold: True
 
+            BoxLayout:
+                size_hint_y: None
+                height: 80
+                padding: [0, 10, 0, 0]
+                alignment: 'center'
+                
+                StringVisualizer:
+                    id: string_vis
+                    # -1=None, 0=L, 1=C, 2=R
+                    active_index: root.current_string_idx 
+            
+            Label:
+                id: instruction_lbl
+                text: "Mute sides, play Center"
+                font_size: '16sp'
+                color: 0.7, 0.7, 0.7, 1
+        
         Label:
             id: status_lbl
             text: "Listening..."

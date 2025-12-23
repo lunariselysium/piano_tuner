@@ -122,6 +122,7 @@ def heavy_calculation_task(measured_data, return_dict):
     """
     Main entry point for the calculation process.
     Prepares data, spawns worker pool, aggregates results.
+    measured_data structure: { MIDI_INT: { STRING_IDX: B_FLOAT, ... }, ... }
     """
     try:
         print("[Calc] Process started.")
@@ -165,10 +166,29 @@ def heavy_calculation_task(measured_data, return_dict):
         # 4. PREPARE B VALUES (Measured + Fallback)
         b_values_list = []
         for midi in all_midi_notes_list:
-            if midi in measured_data and measured_data[midi] > 0:
-                b_values_list.append(measured_data[midi])
+            
+            final_b = None
+            
+            if midi in measured_data and measured_data[midi]:
+                strings_dict = measured_data[midi]
+                valid_b_samples = []
+                
+                # Iterate through strings (0, 1, 2)
+                for s_idx, b_val in strings_dict.items():
+                    if b_val is not None and b_val > 0:
+                        valid_b_samples.append(b_val)
+                
+                if valid_b_samples:
+                    # AGGREGATION LOGIC:
+                    # Unisons must be tuned to the same fundamental.
+                    # We average the inharmonicity coefficient (B) of the strings
+                    # to optimize for the "composite" sound of the key.
+                    final_b = np.mean(valid_b_samples)
+
+            if final_b is not None:
+                b_values_list.append(final_b)
             else:
-                # Fallback to theory if user skipped note or measurement failed
+                # Fallback to theory
                 b_values_list.append(get_theoretical_B(midi))
         
         b_vals_arr = np.array(b_values_list, dtype=np.float64)

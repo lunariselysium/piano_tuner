@@ -4,7 +4,9 @@ from kivy.lang import Builder
 from kivy.uix.screenmanager import ScreenManager, Screen
 from kivy.uix.boxlayout import BoxLayout
 from kivy.clock import Clock
+from kivy.uix.widget import Widget
 from kivy.properties import ObjectProperty
+from kivy.properties import NumericProperty
 import threading
 import numpy as np
 
@@ -16,6 +18,11 @@ from calculation import OptimizationService
 # Fix for some Raspberry Pi window providers
 import os
 #os.environ['KIVY_GL_BACKEND'] = 'gl' #not used for windows testing
+
+
+class StringVisualizer(Widget):
+    active_index = NumericProperty(1) # 0=Left, 1=Center, 2=Right
+
 
 class BaseScreen(Screen):
     pass
@@ -144,27 +151,69 @@ class InstructionScreen(BaseScreen):
     pass
 
 class MeasurementScreen(BaseScreen):
+    current_string_idx = NumericProperty(1) # Used by KV
+
     def on_enter(self):
         self.app = App.get_running_app()
         self.note_list = self.app.target_midi_list if self.app.target_midi_list else [69]
-        self.current_index = 0
+
+        # Structure: measured_data[midi] = { 'L': val, 'C': val, 'R': val }
         self.measured_data = {}
         
+        self.note_index = 0
         self.current_samples = []
         self.waiting_for_silence = False
         self.silence_timer = 0
         
-        self.update_target_display()
+        # Initialize the queue for the first note
+        self.setup_string_queue(self.note_list[self.note_index])
+
         self.event = Clock.schedule_interval(self.check_audio, 0.05)
 
     def on_leave(self):
         Clock.unschedule(self.event)
 
-    def update_target_display(self):
-        midi = self.note_list[self.current_index]
-        note_name = self.midi_to_name(midi)
-        self.ids.note_target_lbl.text = note_name
-        self.ids.progress_bar.value = (self.current_index / len(self.note_list)) * 100
+    def get_strings_for_midi(self, midi):
+        """
+        Returns list of string indices for a given note.
+        Standard Piano Breakpoints (Approximate):
+        21-28 (A0-E1): 1 String (Index 1 or 0, let's use 1 as 'Center' visually for singles)
+        29-43 (F1-G2): 2 Strings (Index 0, 1 -> Left, Right? Or Left, Center?)
+                       Let's use 0 (Left) and 2 (Right) for bichords to be distinct.
+        44-108: 3 Strings (0, 1, 2)
+        """
+        if midi < 29: return [1] # Monochord (treat as Center)
+        if midi < 44: return [0, 2] # Bichord (Left, Right)
+        return [0, 1, 2] # Trichord
+
+    def setup_string_queue(self, midi):
+        """Prepare the list of strings to measure for the current note."""
+        self.string_queue = self.get_strings_for_midi(midi)
+        self.string_queue_index = 0
+        self.update_display()
+
+    def update_display(self):
+        midi = self.note_list[self.note_index]
+        current_str_code = self.string_queue[self.string_queue_index]
+        
+        # Update Visuals
+        self.ids.note_target_lbl.text = self.midi_to_name(midi)
+        self.current_string_idx = current_str_code
+        
+        # Instruction Text
+        if current_str_code == 1 and len(self.string_queue) == 1:
+            txt = "Play Key (Single String)"
+        elif current_str_code == 0:
+            txt = "Mute Center/Right -> Play LEFT"
+        elif current_str_code == 1:
+            txt = "Mute Left/Right -> Play CENTER"
+        elif current_str_code == 2:
+            txt = "Mute Left/Center -> Play RIGHT"
+        self.ids.instruction_lbl.text = txt
+        
+        # Progress
+        total_steps = len(self.note_list)
+        self.ids.progress_bar.value = (self.note_index / total_steps) * 100
         self.ids.status_lbl.text = "Listening..."
         self.ids.status_lbl.color = (1,1,1,1)
 
@@ -200,55 +249,71 @@ class MeasurementScreen(BaseScreen):
             self.app.audio.ready_for_analysis = False # Reset flag
             
             detected_freq = result['freq']
-            midi_target = self.note_list[self.current_index]
+            midi_target = self.note_list[self.note_index]
             
             # --- VALIDATION LOGIC ---
             ideal_freq = 440.0 * (2**((midi_target - 69) / 12.0))
             min_valid, max_valid = ideal_freq / 1.06, ideal_freq * 1.06 # +/- 1 semitone
             
             if min_valid <= detected_freq <= max_valid:
-                # Accumulate sample
                 self.current_samples.append(result['B'])
                 count = len(self.current_samples)
                 
                 if count < self.app.sample_count_target:
-                    self.ids.status_lbl.text = f"Sample {count}/{self.app.sample_count_target}  Captured"
-                    self.ids.status_lbl.color = config.PRIMARY
-                    self.waiting_for_silence = True # Require release between samples
-                    self.silence_timer = 0
+                    self.ids.status_lbl.text = f"Sample {count}/{self.app.sample_count_target}"
+                    self.waiting_for_silence = True 
                 else:
-                    self.ids.status_lbl.text = f"Captured: {detected_freq:.1f}Hz"
-                    self.ids.status_lbl.color = config.PRIMARY
+                    # DONE WITH THIS STRING
+                    avg_b = sum(self.current_samples) / len(self.current_samples)
                     
-                    # Calculate B average (remove lowest and highest)
-                    s = sorted(self.current_samples)
-                    avg_b = sum(s[1:4]) / 3
-                    self.measured_data[midi_target] = avg_b
+                    # Save Data: note -> string_idx -> value
+                    midi = self.note_list[self.note_index]
+                    str_idx = self.string_queue[self.string_queue_index]
                     
-                    self.current_samples = [] # Reset buffer
-                    Clock.schedule_once(self.next_note, 1.0)
+                    if midi not in self.measured_data:
+                        self.measured_data[midi] = {}
+                    
+                    self.measured_data[midi][str_idx] = avg_b
+                    
+                    self.current_samples = []
+                    
+                    # Move to next string or next note
+                    Clock.schedule_once(self.advance_step, 0.5)
             else:
                 msg = "Too High!" if detected_freq > ideal_freq else "Too Low!"
                 self.ids.status_lbl.text = f"{msg} ({detected_freq:.0f}Hz)"
                 self.ids.status_lbl.color = config.DANGER
 
-    def next_note(self, dt=None):
-        self.current_index += 1
-        if self.current_index >= len(self.note_list):
-            # DONE
-            self.app.measured_inharmonicity = self.measured_data
-            self.app.sm.current = 'calculation'
+    def advance_step(self, dt):
+        self.string_queue_index += 1
+        
+        if self.string_queue_index >= len(self.string_queue):
+            # Done with all strings for this note
+            self.note_index += 1
+            if self.note_index >= len(self.note_list):
+                # Done with all notes
+                self.app.measured_inharmonicity = self.measured_data
+                self.app.sm.current = 'calculation'
+            else:
+                self.setup_string_queue(self.note_list[self.note_index])
+                self.waiting_for_silence = True
         else:
-            self.waiting_for_silence = True # Require release between notes
-            self.silence_timer = 0
-            self.update_target_display()
+            # Next string, same note
+            self.update_display()
+            self.waiting_for_silence = True
 
     def skip_note(self):
-        # Mark as 0 or estimated
-        midi = self.note_list[self.current_index]
-        self.measured_data[midi] = 0.0001 # Default B
+        # Skip current string
+        midi = self.note_list[self.note_index]
+        str_idx = self.string_queue[self.string_queue_index]
+        
+        if midi not in self.measured_data:
+            self.measured_data[midi] = {}
+        
+        # Store None to indicate skip/estimate
+        self.measured_data[midi][str_idx] = None 
         self.current_samples = []
-        self.next_note()
+        self.advance_step(None)
 
     def midi_to_name(self, midi):
         notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
