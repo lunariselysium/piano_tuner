@@ -150,9 +150,57 @@
         RoundedButton:
             text: "CONFIRM & NEXT"
             size_hint_y: 0.2
-            on_release: app.sm.current = 'instruction'
+            on_release: app.sm.current = 'measurement_config'
 
-# --- SCREEN 3: INSTRUCTION ---
+# --- SCREEN 3: MEASUREMENT CONFIGURATION ---
+<MeasurementConfigScreen>:
+    name: 'measurement_config'
+    BoxLayout:
+        orientation: 'vertical'
+        padding: 40
+        spacing: 20
+
+        Label:
+            text: "MEASUREMENT SETTINGS"
+            font_size: '28sp'
+            color: app.colors.PRIMARY
+            size_hint_y: 0.15
+
+        BoxLayout:
+            orientation: 'vertical'
+            spacing: 10
+            Label:
+                text: "Note Pattern:"
+                halign: 'left'
+                text_size: self.size
+            Spinner:
+                id: pattern_spinner
+                text: 'Every Note (Standard)'
+                values: ['Every Note (Standard)', 'Every Other Note', 'Octaves Only', 'Temperament Only (F3-F4)']
+                background_color: app.colors.ACCENT_1
+
+        BoxLayout:
+            orientation: 'vertical'
+            spacing: 10
+            Label:
+                text: f"Samples per Note: {int(sample_slider.value)}"
+                halign: 'left'
+                text_size: self.size
+            Slider:
+                id: sample_slider
+                min: 1
+                max: 10
+                value: 5
+                step: 1
+
+        RoundedButton:
+            text: "SAVE & CONTINUE"
+            size_hint_y: 0.2
+            on_release: 
+                root.save_config()
+                app.sm.current = 'instruction'
+
+# --- SCREEN 4: INSTRUCTION ---
 <InstructionScreen>:
     name: 'instruction'
     BoxLayout:
@@ -175,7 +223,7 @@
             size_hint_y: 0.25
             on_release: app.sm.current = 'measurement'
 
-# --- SCREEN 4: MEASUREMENT ---
+# --- SCREEN 5: MEASUREMENT ---
 <MeasurementScreen>:
     name: 'measurement'
     BoxLayout:
@@ -222,7 +270,7 @@
             background_color: app.colors.ACCENT_1
             on_release: root.skip_note()
 
-# --- SCREEN 5: CALCULATION LOADING ---
+# --- SCREEN 6: CALCULATION LOADING ---
 <CalculationScreen>:
     name: 'calculation'
     BoxLayout:
@@ -243,7 +291,7 @@
             font_size: '14sp'
             color: 0.5, 0.5, 0.5, 1
 
-# --- SCREEN 6: TUNING ---
+# --- SCREEN 7: TUNING ---
 <TuningScreen>:
     name: 'tuning'
     FloatLayout:

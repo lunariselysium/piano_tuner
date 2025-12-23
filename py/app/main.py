@@ -117,17 +117,40 @@ class CalibrationScreen(BaseScreen):
         app = App.get_running_app()
         app.audio.sensitivity = value
 
+class MeasurementConfigScreen(BaseScreen):
+    def save_config(self):
+        app = App.get_running_app()
+        
+        # 1. Save Sample Count
+        app.sample_count_target = int(self.ids.sample_slider.value)
+        
+        # 2. Generate Note List
+        start = config.MEASURE_START_MIDI
+        end = config.MEASURE_END_MIDI
+        pattern = self.ids.pattern_spinner.text
+        
+        if pattern == 'Every Note (Standard)':
+            app.target_midi_list = list(range(start, end + 1))
+        elif pattern == 'Every Other Note':
+            app.target_midi_list = list(range(start, end + 1, 2))
+        elif pattern == 'Octaves Only':
+            app.target_midi_list = list(range(start, end + 1, 12))
+        elif pattern == 'Temperament Only (F3-F4)':
+            app.target_midi_list = list(range(53, 66)) # F3 to F4
+            
+        print(f"Config Saved: {len(app.target_midi_list)} notes, {app.sample_count_target} samples each.")
+
 class InstructionScreen(BaseScreen):
     pass
 
 class MeasurementScreen(BaseScreen):
     def on_enter(self):
         self.app = App.get_running_app()
-        self.note_list = list(range(config.MEASURE_START_MIDI, config.MEASURE_END_MIDI + 1))
+        self.note_list = self.app.target_midi_list if self.app.target_midi_list else [69]
         self.current_index = 0
         self.measured_data = {}
         
-        self.current_samples = [] # Buffer for 5 samples
+        self.current_samples = []
         self.waiting_for_silence = False
         self.silence_timer = 0
         
@@ -188,8 +211,8 @@ class MeasurementScreen(BaseScreen):
                 self.current_samples.append(result['B'])
                 count = len(self.current_samples)
                 
-                if count < 5:
-                    self.ids.status_lbl.text = f"Sample {count}/5 Captured"
+                if count < self.app.sample_count_target:
+                    self.ids.status_lbl.text = f"Sample {count}/{self.app.sample_count_target}  Captured"
                     self.ids.status_lbl.color = config.PRIMARY
                     self.waiting_for_silence = True # Require release between samples
                     self.silence_timer = 0
@@ -339,10 +362,15 @@ class PianoTunerApp(App):
         self.measured_inharmonicity = {}
         self.tuning_targets = {}
 
+        # Measurement Config Data
+        self.sample_count_target = 5
+        self.target_midi_list = []
+
         # Screen Manager
         self.sm = ScreenManager()
         self.sm.add_widget(ConnectionScreen())
         self.sm.add_widget(CalibrationScreen())
+        self.sm.add_widget(MeasurementConfigScreen())
         self.sm.add_widget(InstructionScreen())
         self.sm.add_widget(MeasurementScreen())
         self.sm.add_widget(CalculationScreen())
