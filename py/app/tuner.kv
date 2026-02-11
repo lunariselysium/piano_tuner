@@ -330,7 +330,69 @@
             background_color: app.colors.ACCENT_1
             on_release: root.skip_note()
 
-# --- SCREEN 6: CALCULATION LOADING ---
+# --- SCREEN 6: PRESET ---
+<TuningPresetScreen>:
+    name: 'tuning_preset'
+    BoxLayout:
+        orientation: 'vertical'
+        padding: 40
+        spacing: 20
+        
+        Label:
+            text: "CHOOSE TUNING STYLE"
+            font_size: '28sp'
+            color: app.colors.PRIMARY
+            size_hint_y: 0.15
+
+        Spinner:
+            id: preset_spinner
+            text: 'Select Preset'
+            size_hint_y: None
+            height: '50dp'
+            background_color: app.colors.ACCENT_1
+            # TRIGGER UPDATE ON CHANGE
+            on_text: root.on_preset_change(self.text)
+
+        BoxLayout:
+            orientation: 'vertical'
+            # UI logic: Disable only if a preset is selected, Enable for 'Custom'
+            disabled: False if preset_spinner.text == 'Custom' else True
+            opacity: 1 if preset_spinner.text == 'Custom' else 0.5
+            spacing: 10
+            
+            Label:
+                text: f"Octave Weight: {oct_weight.value:.1f}"
+            Slider:
+                id: oct_weight
+                min: 0.5
+                max: 5.0
+                value: root.oct_val # BIND TO PROPERTY
+                on_value: root.oct_val = self.value
+            
+            Label:
+                text: f"5th Weight: {fifth_weight.value:.1f}"
+            Slider:
+                id: fifth_weight
+                min: 0.5
+                max: 5.0
+                value: root.fifth_val # BIND TO PROPERTY
+                on_value: root.fifth_val = self.value
+
+            Label:
+                text: f"3rd Weight: {third_weight.value:.1f}"
+            Slider:
+                id: third_weight
+                min: 0.1
+                max: 3.0
+                value: root.third_val # BIND TO PROPERTY
+                on_value: root.third_val = self.value
+
+        RoundedButton:
+            text: "START OPTIMIZATION"
+            size_hint_y: 0.2
+            on_release: root.apply_preset()
+
+# --- SCREEN 7: CALCULATION LOADING ---
 <CalculationScreen>:
     name: 'calculation'
     BoxLayout:
@@ -351,7 +413,7 @@
             font_size: '14sp'
             color: 0.5, 0.5, 0.5, 1
 
-# --- SCREEN 7: TUNING ---
+# --- SCREEN 8: TUNING ---
 <TuningScreen>:
     name: 'tuning'
     FloatLayout:

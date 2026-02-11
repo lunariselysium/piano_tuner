@@ -118,7 +118,7 @@ def worker_optimization_task(args):
 
 # --- MAIN PROCESS LOGIC ---
 
-def heavy_calculation_task(measured_data, return_dict):
+def heavy_calculation_task(measured_data, custom_weights, return_dict):
     """
     Main entry point for the calculation process.
     Prepares data, spawns worker pool, aggregates results.
@@ -141,11 +141,7 @@ def heavy_calculation_task(measured_data, return_dict):
                 'Major 3rd', 'Major 10th', 'Major 12th', 'Major 17th'
             ],
             reference_note_midi=MIDI_A4,
-            custom_weights={
-                'Octave': 3.0, 'Double Octave': 2.0, 'Perfect 5th': 2.0, 
-                'Perfect 4th': 1.5, 'Major 3rd': 0.8, 'Major 10th': 0.6,
-                'Major 17th': 0.4
-            }
+            custom_weights=custom_weights # Use the passed weights
         )
         
         # 3. CONVERT TO NUMPY ARRAYS
@@ -258,7 +254,7 @@ class OptimizationService:
         self.manager = multiprocessing.Manager()
         self.return_dict = self.manager.dict()
 
-    def start_calculation(self, measured_data):
+    def start_calculation(self, measured_data, custom_weights):
         """
         Starts the heavy calculation in a separate process.
         measured_data: dict {midi_number: B_value}
@@ -272,7 +268,7 @@ class OptimizationService:
 
         self.process = multiprocessing.Process(
             target=heavy_calculation_task,
-            args=(measured_data, self.return_dict)
+            args=(measured_data, custom_weights, self.return_dict)
         )
         self.process.start()
 

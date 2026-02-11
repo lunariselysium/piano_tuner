@@ -33,6 +33,22 @@ DEFAULT_INTERVAL_DATA = {
     'Triple Octave': {'semitones': 36, 'partials': (8, 1), 'weight': 1.6}, # 3 Octaves
 }
 
+
+TUNING_PRESETS = {
+    'Modern (Stretch)': {
+        'Octave': 4.0, 'Double Octave': 3.0, 'Major 12th': 2.5, 'Perfect 5th': 1.5, 
+        'Perfect 4th': 1.0, 'Major 3rd': 0.5, 'Major 10th': 0.4, 'Major 17th': 0.3
+    },
+    'Classic (Balanced)': {
+        'Octave': 3.0, 'Double Octave': 2.0, 'Perfect 5th': 2.0, 
+        'Perfect 4th': 1.5, 'Major 3rd': 0.8, 'Major 10th': 0.6, 'Major 17th': 0.4
+    },
+    'Ancient (Pure)': {
+        'Octave': 2.0, 'Double Octave': 1.0, 'Perfect 5th': 3.5, 
+        'Perfect 4th': 2.5, 'Major 3rd': 2.5, 'Major 10th': 1.5, 'Major 17th': 1.0
+    }
+}
+
 def generate_intervals_from_reference(
     intervals_to_generate: list[str],
     reference_note_midi: int = 69, # Default to A4

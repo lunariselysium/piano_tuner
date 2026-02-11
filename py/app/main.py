@@ -14,6 +14,7 @@ import numpy as np
 import config
 from hardware import AudioEngine, TunerDevice
 from calculation import OptimizationService
+import intervals
 
 # Fix for some Raspberry Pi window providers
 import os
@@ -293,7 +294,7 @@ class MeasurementScreen(BaseScreen):
             if self.note_index >= len(self.note_list):
                 # Done with all notes
                 self.app.measured_inharmonicity = self.measured_data
-                self.app.sm.current = 'calculation'
+                self.app.sm.current = 'tuning_preset'
             else:
                 self.setup_string_queue(self.note_list[self.note_index])
                 self.waiting_for_silence = True
@@ -320,12 +321,47 @@ class MeasurementScreen(BaseScreen):
         octave = (midi // 12) - 1
         name = notes[midi % 12]
         return f"{name}{octave}"
+    
+class TuningPresetScreen(BaseScreen):
+    oct_val = NumericProperty(3.0)
+    fifth_val = NumericProperty(2.0)
+    third_val = NumericProperty(0.8)
+
+    def on_enter(self):
+        self.ids.preset_spinner.values = list(intervals.TUNING_PRESETS.keys()) + ['Custom']
+        self.ids.preset_spinner.text = 'Classic (Balanced)'
+    
+    def on_preset_change(self, selection):
+        if selection in intervals.TUNING_PRESETS:
+            preset = intervals.TUNING_PRESETS[selection]
+            # Update the properties; the sliders will react automatically
+            self.oct_val = preset.get('Octave', 3.0)
+            self.fifth_val = preset.get('Perfect 5th', 2.0)
+            self.third_val = preset.get('Major 3rd', 0.8)
+
+    def apply_preset(self):
+        app = App.get_running_app()
+        selection = self.ids.preset_spinner.text
+        
+        if selection == 'Custom':
+            # Use slider values for core weights
+            app.tuning_weights = {
+                'Octave': self.oct_val,
+                'Perfect 5th': self.fifth_val,
+                'Major 3rd': self.third_val,
+                'Double Octave': 2.0, 
+                'Perfect 4th': 1.5
+            }
+        else:
+            app.tuning_weights = intervals.TUNING_PRESETS[selection]
+        
+        app.sm.current = 'calculation'
 
 class CalculationScreen(BaseScreen):
     def on_enter(self):
         app = App.get_running_app()
         # Start the multiprocessing task
-        app.optimizer.start_calculation(app.measured_inharmonicity)
+        app.optimizer.start_calculation(app.measured_inharmonicity, app.tuning_weights)
         self.event = Clock.schedule_interval(self.check_process, 0.5)
 
     def check_process(self, dt):
@@ -336,6 +372,7 @@ class CalculationScreen(BaseScreen):
             app.tuning_targets = app.optimizer.get_results()
             Clock.unschedule(self.event)
             app.sm.current = 'tuning'
+
 
 class TuningScreen(BaseScreen):
     def on_enter(self):
@@ -431,6 +468,8 @@ class PianoTunerApp(App):
         self.sample_count_target = 5
         self.target_midi_list = []
 
+        self.tuning_weights = intervals.TUNING_PRESETS['Classic (Balanced)'] # Default
+
         # Screen Manager
         self.sm = ScreenManager()
         self.sm.add_widget(ConnectionScreen())
@@ -438,6 +477,7 @@ class PianoTunerApp(App):
         self.sm.add_widget(MeasurementConfigScreen())
         self.sm.add_widget(InstructionScreen())
         self.sm.add_widget(MeasurementScreen())
+        self.sm.add_widget(TuningPresetScreen())
         self.sm.add_widget(CalculationScreen())
         self.sm.add_widget(TuningScreen())
         
